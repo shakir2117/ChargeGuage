@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ChargeGauge</string>
+    <string name="widget_name">ChargeGauge</string>
+    <string name="widget_description">Live charging watts, volts, and amps</string>
+    <color name="window_background">#F6F1E6</color>
+    <color name="launcher_background">#1C1F18</color>
+</resources>
