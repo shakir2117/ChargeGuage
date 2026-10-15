@@ -40,7 +40,7 @@ object WidgetUpdater {
         val views = RemoteViews(context.packageName, R.layout.widget_charge)
         val watts = when (snapshot.powerPath) {
             com.chargegauge.domain.PowerPath.BYPASS_FULL -> "Adapter"
-            com.chargegauge.domain.PowerPath.BYPASS_LIMIT -> "Limit ${Readout.percent(snapshot.levelPercent)}"
+            com.chargegauge.domain.PowerPath.BYPASS_LIMIT -> "Resting ${Readout.percent(snapshot.levelPercent)}"
             com.chargegauge.domain.PowerPath.PAUSED -> "Paused"
             else -> if (snapshot.timestampMillis == 0L || snapshot.batteryPowerW == null) {
                 "— W"

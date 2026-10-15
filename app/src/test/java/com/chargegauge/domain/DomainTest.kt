@@ -25,6 +25,10 @@ class DomainTest {
         )
         assertEquals(PowerPath.BYPASS_LIMIT, resting)
         assertEquals(PowerPath.BYPASS_LIMIT, reportedFull)
+        val residual = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.NOT_CHARGING, level = 80, currentMa = 190.0),
+        )
+        assertEquals(PowerPath.BYPASS_LIMIT, residual)
     }
 
     @Test
@@ -57,12 +61,24 @@ class DomainTest {
         assertEquals(1350.0, second!!, 0.01)
         val flipped = PowerMath.smoothCurrentMa(second, -500.0)
         assertEquals(-500.0, flipped!!, 0.01)
+        val stopped = PowerMath.displayedCurrentMa(second, 190.0, charging = false, wasCharging = true)
+        assertEquals(190.0, stopped!!, 0.01)
     }
 
     @Test
     fun wattsAreVoltsTimesAmps() {
         assertEquals(18.0, PowerMath.watts(4500, 4000.0)!!, 0.001)
         assertNull(PowerMath.watts(null, 4000.0))
+    }
+
+    @Test
+    fun powerScaleCorrectsACurrentReportedInTheWrongUnit() {
+        val asMilliAmps = PowerMath.normalizeCurrentMa(1_500, ChargeStatus.CHARGING, scale = 1000.0)
+        assertEquals(1500.0, asMilliAmps!!, 0.01)
+        val tooLarge = PowerMath.normalizeCurrentMa(1_500_000, ChargeStatus.CHARGING, scale = 0.001)
+        assertEquals(1.5, tooLarge!!, 0.01)
+        val unchanged = PowerMath.normalizeCurrentMa(1_500_000, ChargeStatus.CHARGING, scale = 1.0)
+        assertEquals(1500.0, unchanged!!, 0.01)
     }
 
     @Test
@@ -77,6 +93,8 @@ class DomainTest {
     fun energySkipsMissingPowerAndLongGaps() {
         assertEquals(0.0, PowerMath.energyWh(null, 2_000, 10.0), 0.0)
         assertEquals(10.0 / 3600.0, PowerMath.energyWh(0, 1_000, 10.0), 0.0001)
+        assertEquals(10.0 * 31_000 / 3_600_000.0, PowerMath.energyWh(0, 31_000, 10.0), 0.0001)
+        assertEquals(0.0, PowerMath.energyWh(0, 120_000, 10.0), 0.0)
         assertEquals(0.0, PowerMath.energyWh(0, 3_700_000, 10.0), 0.0)
     }
 
@@ -88,19 +106,30 @@ class DomainTest {
     }
 
     @Test
-    fun systemCurrentWinsUnlessItIsMissingWhileCharging() {
+    fun wattsUseOneSourcePair() {
         val system = publicBattery(currentMicroamps = 2_000_000)
         val extra = extras(current = 1_500_000)
         val merged = SnapshotMerger.merge(system, extra, ShizukuAvailability.READY, false, 10)
-        assertEquals(2000.0, merged.batteryCurrentMa!!, 0.01)
-        assertEquals(ReadingSource.SYSTEM, merged.batteryCurrentSource)
+        assertEquals(1500.0, merged.batteryCurrentMa!!, 0.01)
+        assertEquals(ReadingSource.FUEL_GAUGE, merged.batteryCurrentSource)
         assertEquals(ReadingSource.FUEL_GAUGE, merged.batteryVoltageSource)
         assertEquals(4400, merged.batteryVoltageMv)
-        assertEquals(8.8, merged.batteryPowerW!!, 0.01)
+        assertEquals(6.6, merged.batteryPowerW!!, 0.01)
         assertEquals(4500, merged.systemVoltageMv)
         assertEquals(2000.0, merged.systemCurrentMa!!, 0.01)
         assertEquals(4400, merged.fuelVoltageMv)
         assertEquals(1500.0, merged.fuelCurrentMa!!, 0.01)
+
+        val androidPair = SnapshotMerger.merge(
+            system,
+            extra.copy(batteryVoltageMicrovolts = null),
+            ShizukuAvailability.READY,
+            false,
+            10,
+        )
+        assertEquals(ReadingSource.SYSTEM, androidPair.batteryVoltageSource)
+        assertEquals(ReadingSource.SYSTEM, androidPair.batteryCurrentSource)
+        assertEquals(9.0, androidPair.batteryPowerW!!, 0.01)
 
         val missing = SnapshotMerger.merge(
             system.copy(currentMicroamps = null),

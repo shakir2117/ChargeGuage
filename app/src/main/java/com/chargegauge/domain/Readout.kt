@@ -64,7 +64,7 @@ object Readout {
 
     fun pathLabel(path: PowerPath, levelPercent: Int?): String = when (path) {
         PowerPath.BYPASS_FULL -> "Running from the adapter"
-        PowerPath.BYPASS_LIMIT -> "Charge limit ${percent(levelPercent)}"
+        PowerPath.BYPASS_LIMIT -> "Resting at ${percent(levelPercent)}"
         PowerPath.PAUSED -> "Charging paused"
         PowerPath.CHARGING -> "Charging"
         PowerPath.DISCHARGING -> "Discharging"

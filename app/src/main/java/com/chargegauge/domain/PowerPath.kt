@@ -19,6 +19,9 @@ enum class PowerPath {
 object PowerPathDetector {
     const val IDLE_MILLIAMPS = 150.0
 
+    /** A real charge. A few hundred milliamps can remain after a charge limit stops the battery. */
+    const val STRONG_CHARGE_MILLIAMPS = 500.0
+
     fun detect(snapshot: BatterySnapshot): PowerPath {
         if (snapshot.timestampMillis <= 0L) return PowerPath.UNKNOWN
         if (!snapshot.isPlugged) {
@@ -31,11 +34,11 @@ object PowerPathDetector {
         }
 
         val current = snapshot.batteryCurrentMa
-        if (current != null && current >= IDLE_MILLIAMPS) return PowerPath.CHARGING
+        if (current != null && current >= STRONG_CHARGE_MILLIAMPS) return PowerPath.CHARGING
         if (current != null && current <= -IDLE_MILLIAMPS) return PowerPath.DISCHARGING
 
         val level = snapshot.levelPercent
-        val idle = current == null || abs(current) < IDLE_MILLIAMPS
+        val idle = current == null || abs(current) < STRONG_CHARGE_MILLIAMPS
         val thermal = snapshot.condition == BatteryCondition.OVERHEAT ||
             snapshot.condition == BatteryCondition.COLD
         val notCharging = snapshot.status == ChargeStatus.NOT_CHARGING ||

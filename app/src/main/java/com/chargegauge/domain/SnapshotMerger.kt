@@ -9,29 +9,26 @@ object SnapshotMerger {
         shizuku: ShizukuAvailability,
         fuelGaugeReadFailed: Boolean,
         now: Long,
+        androidCurrentScale: Double = 1.0,
     ): BatterySnapshot {
         val systemCurrent = public.currentMicroamps?.let {
-            PowerMath.normalizeCurrentMa(it, public.status)
+            PowerMath.normalizeCurrentMa(it, public.status, androidCurrentScale)
         }
         val fuelCurrent = extra?.batteryCurrentMicroamps?.let {
             PowerMath.normalizeCurrentMa(it, public.status)
         }
-        val suspectZero = systemCurrent != null &&
-            abs(systemCurrent) < 1.0 &&
-            public.status == ChargeStatus.CHARGING &&
-            (public.levelPercent ?: 0) < 95
-        val (currentMa, currentSource) = when {
-            systemCurrent != null && !suspectZero -> systemCurrent to ReadingSource.SYSTEM
-            fuelCurrent != null -> fuelCurrent to ReadingSource.FUEL_GAUGE
-            systemCurrent != null -> systemCurrent to ReadingSource.SYSTEM
-            else -> null to ReadingSource.NONE
-        }
-
         val fuelVoltageMv = extra?.batteryVoltageMicrovolts?.let(PowerMath::voltageToMv)
-        val voltageMv = fuelVoltageMv ?: public.voltageMv
+        val useFuelPair = fuelVoltageMv != null && fuelCurrent != null
+        val voltageMv = if (useFuelPair) fuelVoltageMv else public.voltageMv
         val voltageSource = when {
-            fuelVoltageMv != null -> ReadingSource.FUEL_GAUGE
+            useFuelPair -> ReadingSource.FUEL_GAUGE
             public.voltageMv != null -> ReadingSource.SYSTEM
+            else -> ReadingSource.NONE
+        }
+        val currentMa = if (useFuelPair) fuelCurrent else systemCurrent
+        val currentSource = when {
+            useFuelPair -> ReadingSource.FUEL_GAUGE
+            systemCurrent != null -> ReadingSource.SYSTEM
             else -> ReadingSource.NONE
         }
 
@@ -67,6 +64,7 @@ object SnapshotMerger {
             systemCurrentMa = systemCurrent,
             fuelVoltageMv = fuelVoltageMv,
             fuelCurrentMa = fuelCurrent,
+            androidCurrentScale = androidCurrentScale,
             remainingMah = PowerMath.capacityToMah(public.chargeCounterUah?.toLong()),
             cycleCount = cycleCount,
             cycleSource = cycleSource,

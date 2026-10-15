@@ -5,6 +5,11 @@ import kotlin.math.abs
 object PowerMath {
     fun microampsToMa(raw: Int): Double? {
         if (raw == Int.MIN_VALUE) return null
+        return microampsToMa(raw.toDouble())
+    }
+
+    fun microampsToMa(raw: Double): Double? {
+        if (raw.isNaN() || raw.isInfinite()) return null
         val milliamps = raw / 1000.0
         if (abs(milliamps) > 20_000.0) return null
         return milliamps
@@ -13,9 +18,11 @@ object PowerMath {
     /**
      * Android documents positive current as charge entering the battery.
      * Flip the sign only when it disagrees with a definite charge or discharge state.
+     * [scale] corrects phones that report current in the wrong unit.
      */
-    fun normalizeCurrentMa(rawMicroamps: Int, status: ChargeStatus): Double? {
-        val milliamps = microampsToMa(rawMicroamps) ?: return null
+    fun normalizeCurrentMa(rawMicroamps: Int, status: ChargeStatus, scale: Double = 1.0): Double? {
+        if (rawMicroamps == Int.MIN_VALUE) return null
+        val milliamps = microampsToMa(rawMicroamps.toDouble() * scale) ?: return null
         return when {
             status == ChargeStatus.CHARGING && milliamps < 0 -> -milliamps
             status == ChargeStatus.DISCHARGING && milliamps > 0 -> -milliamps
@@ -36,6 +43,18 @@ object PowerMath {
         if (sample == null) return null
         if (previous == null || previous * sample < 0.0) return sample
         return previous + alpha * (sample - previous)
+    }
+
+    /** While a charge is underway, blend samples. Stopping or starting a charge shows the new sample at once. */
+    fun displayedCurrentMa(
+        previous: Double?,
+        sample: Double?,
+        charging: Boolean,
+        wasCharging: Boolean,
+    ): Double? {
+        if (sample == null) return null
+        if (!charging || !wasCharging) return sample
+        return smoothCurrentMa(previous, sample)
     }
 
     fun watts(voltageMv: Int?, currentMa: Double?): Double? {
@@ -61,9 +80,9 @@ object PowerMath {
         watts: Double?,
     ): Double {
         if (previousTimestamp == null || watts == null || watts <= 0.0) return 0.0
-        val hours = (timestamp - previousTimestamp) / 3_600_000.0
-        if (hours <= 0.0 || hours > 1.0) return 0.0
-        return watts * hours
+        val elapsed = timestamp - previousTimestamp
+        if (elapsed <= 0L || elapsed > MAX_ENERGY_GAP_MILLIS) return 0.0
+        return watts * (elapsed / 3_600_000.0)
     }
 
     fun normalizeHealthIndex(raw: Double?): Double? {
@@ -74,4 +93,6 @@ object PowerMath {
             else -> null
         }
     }
+
+    const val MAX_ENERGY_GAP_MILLIS = 90_000L
 }
