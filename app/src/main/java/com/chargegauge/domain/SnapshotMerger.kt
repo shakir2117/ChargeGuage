@@ -28,16 +28,10 @@ object SnapshotMerger {
         }
 
         val fuelVoltageMv = extra?.batteryVoltageMicrovolts?.let(PowerMath::voltageToMv)
-        val pairedFuelVoltage = currentSource == ReadingSource.FUEL_GAUGE && fuelVoltageMv != null
-        val voltageMv = when {
-            pairedFuelVoltage -> fuelVoltageMv
-            public.voltageMv != null -> public.voltageMv
-            else -> fuelVoltageMv
-        }
+        val voltageMv = fuelVoltageMv ?: public.voltageMv
         val voltageSource = when {
-            pairedFuelVoltage -> ReadingSource.FUEL_GAUGE
+            fuelVoltageMv != null -> ReadingSource.FUEL_GAUGE
             public.voltageMv != null -> ReadingSource.SYSTEM
-            voltageMv != null -> ReadingSource.FUEL_GAUGE
             else -> ReadingSource.NONE
         }
 
@@ -69,6 +63,10 @@ object SnapshotMerger {
             batteryCurrentMa = currentMa,
             batteryCurrentSource = currentSource,
             batteryPowerW = PowerMath.watts(voltageMv, currentMa),
+            systemVoltageMv = public.voltageMv,
+            systemCurrentMa = systemCurrent,
+            fuelVoltageMv = fuelVoltageMv,
+            fuelCurrentMa = fuelCurrent,
             remainingMah = PowerMath.capacityToMah(public.chargeCounterUah?.toLong()),
             cycleCount = cycleCount,
             cycleSource = cycleSource,
@@ -84,6 +82,7 @@ object SnapshotMerger {
             chargerLimitWatts = PowerMath.watts(limitMv, limitMa),
             shizuku = shizuku,
             fuelGaugeReadFailed = fuelGaugeReadFailed,
+            powerPath = PowerPath.UNKNOWN,
         )
     }
 }

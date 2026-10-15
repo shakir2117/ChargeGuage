@@ -20,13 +20,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.chargegauge.domain.BatterySnapshot
 import com.chargegauge.domain.ChargeStatus
+import com.chargegauge.domain.PowerPath
 import com.chargegauge.domain.Readout
 import com.chargegauge.ui.components.Fact
 import com.chargegauge.ui.components.MeterCard
+import com.chargegauge.ui.components.SeriesChart
 
 @Composable
 fun NowScreen(
     snapshot: BatterySnapshot,
+    powerTrace: List<Pair<Long, Double>>,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -42,7 +45,11 @@ fun NowScreen(
             return@Column
         }
         Text(
-            "${Readout.statusLabel(snapshot.status)} · ${Readout.plugLabel(snapshot.plugged)}",
+            if (snapshot.powerPath.isAdapterPowered) {
+                "${Readout.pathLabel(snapshot.powerPath, snapshot.levelPercent)} · ${Readout.plugLabel(snapshot.plugged)}"
+            } else {
+                "${Readout.statusLabel(snapshot.status)} · ${Readout.plugLabel(snapshot.plugged)}"
+            },
             style = MaterialTheme.typography.titleMedium,
         )
         PowerHero(snapshot)
@@ -60,6 +67,16 @@ fun NowScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+        Text("Last 15 minutes", style = MaterialTheme.typography.titleMedium)
+        if (powerTrace.size < 2) {
+            Text(
+                "The power curve fills in as readings arrive.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            SeriesChart(powerTrace)
+        }
+        SourceCompare(snapshot)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(Readout.percent(snapshot.levelPercent), style = MaterialTheme.typography.titleLarge)
             LinearProgressIndicator(
@@ -98,7 +115,7 @@ fun NowScreen(
             }
         }
         ChargerCard(snapshot)
-        if (snapshot.batteryCurrentMa == null) {
+        if (snapshot.batteryCurrentMa == null && snapshot.powerPath == PowerPath.CHARGING) {
             Text(
                 "This phone is not reporting current through the normal battery API.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -115,6 +132,10 @@ fun NowScreen(
 
 @Composable
 private fun PowerHero(snapshot: BatterySnapshot) {
+    if (snapshot.powerPath.isAdapterPowered) {
+        AdapterHero(snapshot)
+        return
+    }
     val caption = when {
         snapshot.batteryPowerW == null -> "Power is not available yet"
         snapshot.batteryPowerW >= 0.0 && snapshot.status != ChargeStatus.DISCHARGING -> "Into the battery"
@@ -137,6 +158,61 @@ private fun PowerHero(snapshot: BatterySnapshot) {
             )
         }
         Text(caption, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+private fun AdapterHero(snapshot: BatterySnapshot) {
+    val title = when (snapshot.powerPath) {
+        PowerPath.BYPASS_LIMIT -> "Charge limit"
+        PowerPath.PAUSED -> "Charging paused"
+        else -> "Running from the adapter"
+    }
+    val detail = when (snapshot.powerPath) {
+        PowerPath.BYPASS_LIMIT ->
+            "Charging stopped at ${Readout.percent(snapshot.levelPercent)}. The battery is resting, and the phone is powered by the adapter."
+        PowerPath.PAUSED ->
+            "The battery is not taking charge because of its temperature."
+        else ->
+            "The battery is full and is not taking charge. The phone is powered by the adapter."
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(detail, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "Battery ${Readout.watts(snapshot.batteryPowerW)} W · ${Readout.volts(snapshot.batteryVoltageMv)} · ${Readout.amps(snapshot.batteryCurrentMa)}",
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SourceCompare(snapshot: BatterySnapshot) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Android and fuel gauge", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Fact("Android volts", Readout.volts(snapshot.systemVoltageMv), Modifier.weight(1f))
+                Fact("Android amps", Readout.amps(snapshot.systemCurrentMa), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Fact("Gauge volts", Readout.volts(snapshot.fuelVoltageMv), Modifier.weight(1f))
+                Fact("Gauge amps", Readout.amps(snapshot.fuelCurrentMa), Modifier.weight(1f))
+            }
+            Text(
+                "The watt number uses gauge voltage when Shizuku can read it, with the current source named on the card above.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

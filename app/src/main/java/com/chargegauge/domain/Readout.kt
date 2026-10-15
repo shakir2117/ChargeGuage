@@ -62,6 +62,16 @@ object Readout {
         return iso.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
     }
 
+    fun pathLabel(path: PowerPath, levelPercent: Int?): String = when (path) {
+        PowerPath.BYPASS_FULL -> "Running from the adapter"
+        PowerPath.BYPASS_LIMIT -> "Charge limit ${percent(levelPercent)}"
+        PowerPath.PAUSED -> "Charging paused"
+        PowerPath.CHARGING -> "Charging"
+        PowerPath.DISCHARGING -> "Discharging"
+        PowerPath.UNPLUGGED -> "Unplugged"
+        PowerPath.UNKNOWN -> "Reading"
+    }
+
     fun statusLabel(status: ChargeStatus): String = when (status) {
         ChargeStatus.CHARGING -> "Charging"
         ChargeStatus.DISCHARGING -> "Discharging"

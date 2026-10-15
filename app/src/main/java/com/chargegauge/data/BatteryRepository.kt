@@ -4,6 +4,9 @@ import com.chargegauge.data.db.CapacitySnapshotEntity
 import com.chargegauge.data.db.ChargeDao
 import com.chargegauge.domain.BatterySnapshot
 import com.chargegauge.domain.ChargeStatus
+import com.chargegauge.domain.PlugType
+import com.chargegauge.domain.PowerPath
+import com.chargegauge.domain.PowerPathDetector
 import com.chargegauge.domain.PowerMath
 import com.chargegauge.domain.PrivilegedExtras
 import com.chargegauge.domain.ShizukuAvailability
@@ -25,10 +28,13 @@ class BatteryRepository(
     private val mutex = Mutex()
     private val snapshotState = MutableStateFlow(BatterySnapshot.Empty)
     val snapshot: StateFlow<BatterySnapshot> = snapshotState.asStateFlow()
+    private val powerTraceState = MutableStateFlow<List<Pair<Long, Double>>>(emptyList())
+    val powerTrace: StateFlow<List<Pair<Long, Double>>> = powerTraceState.asStateFlow()
 
     private var cachedExtras: PrivilegedExtras? = null
     private var cachedAtMillis: Long = 0L
     private var smoothedCurrentMa: Double? = null
+    private val recentPower = ArrayDeque<Pair<Long, Double>>()
 
     suspend fun refreshOnce(): BatterySnapshot = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -36,7 +42,12 @@ class BatteryRepository(
             val shizuku = gateway.availability()
             val now = System.currentTimeMillis()
             val weakCurrent = needsFreshFuelGauge(public.currentMicroamps, public.status, public.levelPercent)
-            val maxAge = if (weakCurrent) FAST_CACHE_MILLIS else SLOW_CACHE_MILLIS
+            val holding = snapshotState.value.powerPath.isAdapterPowered && public.plugged != PlugType.NONE
+            val maxAge = when {
+                holding -> HOLD_CACHE_MILLIS
+                public.plugged != PlugType.NONE || weakCurrent -> FAST_CACHE_MILLIS
+                else -> SLOW_CACHE_MILLIS
+            }
             var readFailed = false
             if (shizuku == ShizukuAvailability.READY &&
                 (cachedExtras == null || now - cachedAtMillis > maxAge)
@@ -61,14 +72,30 @@ class BatteryRepository(
                 now = now,
             )
             smoothedCurrentMa = PowerMath.smoothCurrentMa(smoothedCurrentMa, merged.batteryCurrentMa)
-            val snapshot = merged.copy(
+            val measured = merged.copy(
                 batteryCurrentMa = smoothedCurrentMa,
                 batteryPowerW = PowerMath.watts(merged.batteryVoltageMv, smoothedCurrentMa),
             )
+            val snapshot = measured.copy(powerPath = PowerPathDetector.detect(measured))
             snapshotState.value = snapshot
+            recordPower(snapshot)
             maybeRecordCapacity(snapshot)
             snapshot
         }
+    }
+
+    private fun recordPower(snapshot: BatterySnapshot) {
+        val watts = snapshot.batteryPowerW ?: return
+        if (snapshot.timestampMillis <= 0L) return
+        recentPower.addLast(snapshot.timestampMillis to watts)
+        val oldest = snapshot.timestampMillis - TRACE_WINDOW_MILLIS
+        while (recentPower.size > 1 && recentPower.first().first < oldest) {
+            recentPower.removeFirst()
+        }
+        while (recentPower.size > TRACE_POINT_CAP) {
+            recentPower.removeFirst()
+        }
+        powerTraceState.value = recentPower.toList()
     }
 
     private fun needsFreshFuelGauge(
@@ -104,7 +131,10 @@ class BatteryRepository(
 
     private companion object {
         const val FAST_CACHE_MILLIS = 2_000L
+        const val HOLD_CACHE_MILLIS = 15_000L
         const val SLOW_CACHE_MILLIS = 60_000L
         const val CAPACITY_GAP_MILLIS = 20L * 60L * 60L * 1000L
+        const val TRACE_WINDOW_MILLIS = 15L * 60L * 1000L
+        const val TRACE_POINT_CAP = 500
     }
 }

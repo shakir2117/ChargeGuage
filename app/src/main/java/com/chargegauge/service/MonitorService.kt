@@ -147,10 +147,16 @@ class MonitorService : Service() {
     }
 
     private fun monitorNotification(snapshot: BatterySnapshot): Notification {
-        val title = if (snapshot.batteryPowerW == null) {
-            "Power unavailable"
-        } else {
-            "${Readout.watts(snapshot.batteryPowerW)} W"
+        val title = when (snapshot.powerPath) {
+            com.chargegauge.domain.PowerPath.BYPASS_FULL -> "Running from the adapter"
+            com.chargegauge.domain.PowerPath.BYPASS_LIMIT ->
+                "Charge limit ${Readout.percent(snapshot.levelPercent)}"
+            com.chargegauge.domain.PowerPath.PAUSED -> "Charging paused"
+            else -> if (snapshot.batteryPowerW == null) {
+                "Power unavailable"
+            } else {
+                "${Readout.watts(snapshot.batteryPowerW)} W"
+            }
         }
         val text = listOf(
             Readout.volts(snapshot.batteryVoltageMv),

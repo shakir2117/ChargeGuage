@@ -60,6 +60,7 @@ object AlertEvaluator {
         val power = snapshot.batteryPowerW
         val level = snapshot.levelPercent
         val slowNow = settings.slowEnabled &&
+            !snapshot.powerPath.isAdapterPowered &&
             snapshot.status == ChargeStatus.CHARGING &&
             power != null &&
             power >= 0.0 &&

@@ -81,6 +81,10 @@ data class BatterySnapshot(
     val batteryCurrentMa: Double?,
     val batteryCurrentSource: ReadingSource,
     val batteryPowerW: Double?,
+    val systemVoltageMv: Int?,
+    val systemCurrentMa: Double?,
+    val fuelVoltageMv: Int?,
+    val fuelCurrentMa: Double?,
     val remainingMah: Double?,
     val cycleCount: Int?,
     val cycleSource: ReadingSource,
@@ -96,6 +100,7 @@ data class BatterySnapshot(
     val chargerLimitWatts: Double?,
     val shizuku: ShizukuAvailability,
     val fuelGaugeReadFailed: Boolean,
+    val powerPath: PowerPath,
 ) {
     val isPlugged: Boolean get() = plugged != PlugType.NONE
 
@@ -113,6 +118,10 @@ data class BatterySnapshot(
             batteryCurrentMa = null,
             batteryCurrentSource = ReadingSource.NONE,
             batteryPowerW = null,
+            systemVoltageMv = null,
+            systemCurrentMa = null,
+            fuelVoltageMv = null,
+            fuelCurrentMa = null,
             remainingMah = null,
             cycleCount = null,
             cycleSource = ReadingSource.NONE,
@@ -128,6 +137,7 @@ data class BatterySnapshot(
             chargerLimitWatts = null,
             shizuku = ShizukuAvailability.NOT_INSTALLED,
             fuelGaugeReadFailed = false,
+            powerPath = PowerPath.UNKNOWN,
         )
     }
 }

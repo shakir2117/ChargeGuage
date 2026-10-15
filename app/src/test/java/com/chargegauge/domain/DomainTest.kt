@@ -1,11 +1,55 @@
 package com.chargegauge.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DomainTest {
+    @Test
+    fun fullBatteryOnTheAdapterIsBypass() {
+        val path = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.FULL, level = 100, currentMa = 20.0),
+        )
+        assertEquals(PowerPath.BYPASS_FULL, path)
+    }
+
+    @Test
+    fun chargeLimitBelowFullIsBypass() {
+        val resting = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.NOT_CHARGING, level = 80, currentMa = 12.0),
+        )
+        val reportedFull = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.FULL, level = 80, currentMa = 0.0),
+        )
+        assertEquals(PowerPath.BYPASS_LIMIT, resting)
+        assertEquals(PowerPath.BYPASS_LIMIT, reportedFull)
+    }
+
+    @Test
+    fun activeChargeAndThermalPauseStayDistinct() {
+        val charging = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.CHARGING, level = 80, currentMa = 1800.0),
+        )
+        val missing = PowerPathDetector.detect(
+            plugged(status = ChargeStatus.CHARGING, level = 40, currentMa = 0.0),
+        )
+        val hot = PowerPathDetector.detect(
+            plugged(
+                status = ChargeStatus.NOT_CHARGING,
+                level = 80,
+                currentMa = 0.0,
+                condition = BatteryCondition.OVERHEAT,
+            ),
+        )
+        assertEquals(PowerPath.CHARGING, charging)
+        assertEquals(PowerPath.CHARGING, missing)
+        assertEquals(PowerPath.PAUSED, hot)
+        assertFalse(PowerPath.CHARGING.isAdapterPowered)
+        assertTrue(PowerPath.BYPASS_LIMIT.isAdapterPowered)
+    }
+
     @Test
     fun smoothingFollowsCurrentWithoutMixingChargeAndDischarge() {
         val first = PowerMath.smoothCurrentMa(null, 1000.0)
@@ -50,6 +94,13 @@ class DomainTest {
         val merged = SnapshotMerger.merge(system, extra, ShizukuAvailability.READY, false, 10)
         assertEquals(2000.0, merged.batteryCurrentMa!!, 0.01)
         assertEquals(ReadingSource.SYSTEM, merged.batteryCurrentSource)
+        assertEquals(ReadingSource.FUEL_GAUGE, merged.batteryVoltageSource)
+        assertEquals(4400, merged.batteryVoltageMv)
+        assertEquals(8.8, merged.batteryPowerW!!, 0.01)
+        assertEquals(4500, merged.systemVoltageMv)
+        assertEquals(2000.0, merged.systemCurrentMa!!, 0.01)
+        assertEquals(4400, merged.fuelVoltageMv)
+        assertEquals(1500.0, merged.fuelCurrentMa!!, 0.01)
 
         val missing = SnapshotMerger.merge(
             system.copy(currentMicroamps = null),
@@ -209,6 +260,20 @@ class DomainTest {
         inputCurrentMicroamps = 1_000_000,
         limitVoltageMicrovolts = null,
         limitCurrentMicroamps = null,
+    )
+
+    private fun plugged(
+        status: ChargeStatus,
+        level: Int,
+        currentMa: Double?,
+        condition: BatteryCondition = BatteryCondition.GOOD,
+    ) = BatterySnapshot.Empty.copy(
+        timestampMillis = 1L,
+        status = status,
+        plugged = PlugType.USB,
+        levelPercent = level,
+        batteryCurrentMa = currentMa,
+        condition = condition,
     )
 
     private fun snapshot(

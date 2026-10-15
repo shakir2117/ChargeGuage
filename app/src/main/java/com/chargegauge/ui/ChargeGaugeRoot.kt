@@ -61,6 +61,7 @@ fun ChargeGaugeRoot() {
     val app = context.applicationContext as ChargeGaugeApp
     val navController = rememberNavController()
     val snapshot by app.container.repository.snapshot.collectAsStateWithLifecycle()
+    val powerTrace by app.container.repository.powerTrace.collectAsStateWithLifecycle()
     val settings by app.container.settings.settings.collectAsStateWithLifecycle(AppSettings())
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "now"
@@ -127,6 +128,7 @@ fun ChargeGaugeRoot() {
             composable("now") {
                 NowScreen(
                     snapshot = snapshot,
+                    powerTrace = powerTrace,
                     onOpenSettings = { navController.navigate("settings") },
                 )
             }

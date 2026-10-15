@@ -38,10 +38,15 @@ object WidgetUpdater {
 
     private fun remoteViews(context: Context, snapshot: BatterySnapshot): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_charge)
-        val watts = if (snapshot.timestampMillis == 0L || snapshot.batteryPowerW == null) {
-            "— W"
-        } else {
-            "${Readout.watts(snapshot.batteryPowerW)} W"
+        val watts = when (snapshot.powerPath) {
+            com.chargegauge.domain.PowerPath.BYPASS_FULL -> "Adapter"
+            com.chargegauge.domain.PowerPath.BYPASS_LIMIT -> "Limit ${Readout.percent(snapshot.levelPercent)}"
+            com.chargegauge.domain.PowerPath.PAUSED -> "Paused"
+            else -> if (snapshot.timestampMillis == 0L || snapshot.batteryPowerW == null) {
+                "— W"
+            } else {
+                "${Readout.watts(snapshot.batteryPowerW)} W"
+            }
         }
         views.setTextViewText(R.id.widget_watts, watts)
         views.setTextViewText(
@@ -52,7 +57,12 @@ object WidgetUpdater {
                 Readout.percent(snapshot.levelPercent),
             ).joinToString("   "),
         )
-        views.setTextViewText(R.id.widget_status, Readout.plugLabel(snapshot.plugged))
+        val status = if (snapshot.powerPath.isAdapterPowered) {
+            Readout.pathLabel(snapshot.powerPath, snapshot.levelPercent)
+        } else {
+            Readout.plugLabel(snapshot.plugged)
+        }
+        views.setTextViewText(R.id.widget_status, status)
         val pending = PendingIntent.getActivity(
             context,
             0,
