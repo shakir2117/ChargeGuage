@@ -24,6 +24,7 @@ class BatteryRepository(
     private val system: SystemBatteryDataSource,
     private val gateway: ShizukuGateway,
     private val dao: ChargeDao,
+    private val settings: SettingsStore,
 ) {
     private val mutex = Mutex()
     private val snapshotState = MutableStateFlow(BatterySnapshot.Empty)
@@ -34,9 +35,10 @@ class BatteryRepository(
     private var cachedExtras: PrivilegedExtras? = null
     private var cachedAtMillis: Long = 0L
     private var smoothedCurrentMa: Double? = null
+    private var wasCharging = false
     private val recentPower = ArrayDeque<Pair<Long, Double>>()
 
-    suspend fun refreshOnce(): BatterySnapshot = withContext(Dispatchers.IO) {
+    suspend fun refreshOnce(interactive: Boolean = false): BatterySnapshot = withContext(Dispatchers.IO) {
         mutex.withLock {
             val public = system.read()
             val shizuku = gateway.availability()
@@ -44,6 +46,7 @@ class BatteryRepository(
             val weakCurrent = needsFreshFuelGauge(public.currentMicroamps, public.status, public.levelPercent)
             val holding = snapshotState.value.powerPath.isAdapterPowered && public.plugged != PlugType.NONE
             val maxAge = when {
+                !interactive -> if (weakCurrent) BACKGROUND_GAUGE_MILLIS else SLOW_CACHE_MILLIS
                 holding -> HOLD_CACHE_MILLIS
                 public.plugged != PlugType.NONE || weakCurrent -> FAST_CACHE_MILLIS
                 else -> SLOW_CACHE_MILLIS
@@ -70,8 +73,16 @@ class BatteryRepository(
                 shizuku = shizuku,
                 fuelGaugeReadFailed = readFailed,
                 now = now,
+                androidCurrentScale = settings.current().androidCurrentScale(),
             )
-            smoothedCurrentMa = PowerMath.smoothCurrentMa(smoothedCurrentMa, merged.batteryCurrentMa)
+            val chargingNow = merged.status == ChargeStatus.CHARGING && merged.isPlugged
+            smoothedCurrentMa = PowerMath.displayedCurrentMa(
+                previous = smoothedCurrentMa,
+                sample = merged.batteryCurrentMa,
+                charging = chargingNow,
+                wasCharging = wasCharging,
+            )
+            wasCharging = chargingNow
             val measured = merged.copy(
                 batteryCurrentMa = smoothedCurrentMa,
                 batteryPowerW = PowerMath.watts(merged.batteryVoltageMv, smoothedCurrentMa),
@@ -132,6 +143,7 @@ class BatteryRepository(
     private companion object {
         const val FAST_CACHE_MILLIS = 2_000L
         const val HOLD_CACHE_MILLIS = 15_000L
+        const val BACKGROUND_GAUGE_MILLIS = 60_000L
         const val SLOW_CACHE_MILLIS = 60_000L
         const val CAPACITY_GAP_MILLIS = 20L * 60L * 60L * 1000L
         const val TRACE_WINDOW_MILLIS = 15L * 60L * 1000L

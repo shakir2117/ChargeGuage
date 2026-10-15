@@ -47,6 +47,7 @@ class AppContainer(context: Application) {
         system = SystemBatteryDataSource(context),
         gateway = gateway,
         dao = database.chargeDao(),
+        settings = settings,
     )
     val sessions = SessionRecorder(database.chargeDao())
     val exporter = CsvExporter(context, database.chargeDao())

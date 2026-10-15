@@ -10,7 +10,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -32,7 +31,6 @@ import kotlinx.coroutines.launch
 class MonitorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var loop: Job? = null
-    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -44,7 +42,6 @@ class MonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startInForeground(placeholderNotification())
-        acquireWakeLock()
         if (loop?.isActive != true) {
             loop = scope.launch { monitor() }
         }
@@ -54,20 +51,26 @@ class MonitorService : Service() {
     override fun onDestroy() {
         isRunning = false
         scope.cancel()
-        wakeLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
     }
 
     private suspend fun monitor() {
-        val container = (application as ChargeGaugeApp).container
+        val app = application as ChargeGaugeApp
+        val container = app.container
         while (true) {
             val settings = container.settings.current()
             if (!settings.monitorWhileCharging) {
                 stopSelf()
                 return
             }
-            val snapshot = container.repository.refreshOnce()
-            container.sessions.onSnapshot(snapshot, settings.sampleIntervalSec * 1000L)
+            val interactive = app.uiVisible
+            val intervalMs = if (interactive) {
+                settings.sampleIntervalSec * 1000L
+            } else {
+                BACKGROUND_INTERVAL_MS
+            }
+            val snapshot = container.repository.refreshOnce(interactive = interactive)
+            container.sessions.onSnapshot(snapshot, intervalMs)
             if (!snapshot.isPlugged) {
                 stopSelf()
                 return
@@ -91,7 +94,7 @@ class MonitorService : Service() {
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.notify(MONITOR_NOTIFICATION, monitorNotification(snapshot))
-            delay(settings.sampleIntervalSec * 1000L)
+            delay(intervalMs)
         }
     }
 
@@ -104,15 +107,6 @@ class MonitorService : Service() {
             )
         } else {
             startForeground(MONITOR_NOTIFICATION, notification)
-        }
-    }
-
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val power = getSystemService(PowerManager::class.java)
-        wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "chargegauge:monitor").apply {
-            setReferenceCounted(false)
-            acquire(12 * 60 * 60 * 1000L)
         }
     }
 
@@ -150,7 +144,7 @@ class MonitorService : Service() {
         val title = when (snapshot.powerPath) {
             com.chargegauge.domain.PowerPath.BYPASS_FULL -> "Running from the adapter"
             com.chargegauge.domain.PowerPath.BYPASS_LIMIT ->
-                "Charge limit ${Readout.percent(snapshot.levelPercent)}"
+                "Resting at ${Readout.percent(snapshot.levelPercent)}"
             com.chargegauge.domain.PowerPath.PAUSED -> "Charging paused"
             else -> if (snapshot.batteryPowerW == null) {
                 "Power unavailable"
@@ -201,6 +195,7 @@ class MonitorService : Service() {
         var isRunning: Boolean = false
             private set
 
+        private const val BACKGROUND_INTERVAL_MS = 30_000L
         private const val MONITOR_CHANNEL = "monitor"
         private const val ALERT_CHANNEL = "alerts"
         private const val MONITOR_NOTIFICATION = 1
