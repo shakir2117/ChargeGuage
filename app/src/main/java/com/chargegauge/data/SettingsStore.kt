@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.chargegauge.ui.theme.knownThemeId
 import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -39,6 +41,10 @@ class SettingsStore(context: Context) {
         slowAlertMinutes = this[SLOW_MINUTES] ?: 3,
         healthAlertEnabled = this[HEALTH_ON] ?: true,
         healthAlertPercent = this[HEALTH_PCT] ?: 80.0,
+        powerScaleEnabled = this[SCALE_ON] ?: false,
+        powerScale = allowedPowerScale(this[SCALE] ?: 1.0),
+        themeId = knownThemeId(this[THEME] ?: "material_you"),
+        amoled = this[AMOLED] ?: false,
         slowSinceMillis = this[SLOW_SINCE]?.takeIf { it >= 0L },
         lastHeatMillis = this[LAST_HEAT] ?: 0L,
         lastSlowMillis = this[LAST_SLOW] ?: 0L,
@@ -56,6 +62,10 @@ class SettingsStore(context: Context) {
         this[SLOW_MINUTES] = settings.slowAlertMinutes
         this[HEALTH_ON] = settings.healthAlertEnabled
         this[HEALTH_PCT] = settings.healthAlertPercent
+        this[SCALE_ON] = settings.powerScaleEnabled
+        this[SCALE] = allowedPowerScale(settings.powerScale)
+        this[THEME] = knownThemeId(settings.themeId)
+        this[AMOLED] = settings.amoled
         this[SLOW_SINCE] = settings.slowSinceMillis ?: -1L
         this[LAST_HEAT] = settings.lastHeatMillis
         this[LAST_SLOW] = settings.lastSlowMillis
@@ -77,5 +87,9 @@ class SettingsStore(context: Context) {
         val LAST_HEAT = longPreferencesKey("last_heat")
         val LAST_SLOW = longPreferencesKey("last_slow")
         val LAST_HEALTH = longPreferencesKey("last_health")
+        val SCALE_ON = booleanPreferencesKey("power_scale_on")
+        val SCALE = doublePreferencesKey("power_scale")
+        val THEME = stringPreferencesKey("theme_id")
+        val AMOLED = booleanPreferencesKey("amoled")
     }
 }

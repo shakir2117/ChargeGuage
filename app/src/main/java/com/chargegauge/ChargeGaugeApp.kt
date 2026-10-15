@@ -19,6 +19,9 @@ class ChargeGaugeApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    @Volatile
+    var uiVisible: Boolean = false
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
