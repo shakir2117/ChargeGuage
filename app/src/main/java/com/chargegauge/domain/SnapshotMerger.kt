@@ -27,9 +27,15 @@ object SnapshotMerger {
             else -> null to ReadingSource.NONE
         }
 
-        val voltageMv = public.voltageMv
-            ?: extra?.batteryVoltageMicrovolts?.let(PowerMath::voltageToMv)
+        val fuelVoltageMv = extra?.batteryVoltageMicrovolts?.let(PowerMath::voltageToMv)
+        val pairedFuelVoltage = currentSource == ReadingSource.FUEL_GAUGE && fuelVoltageMv != null
+        val voltageMv = when {
+            pairedFuelVoltage -> fuelVoltageMv
+            public.voltageMv != null -> public.voltageMv
+            else -> fuelVoltageMv
+        }
         val voltageSource = when {
+            pairedFuelVoltage -> ReadingSource.FUEL_GAUGE
             public.voltageMv != null -> ReadingSource.SYSTEM
             voltageMv != null -> ReadingSource.FUEL_GAUGE
             else -> ReadingSource.NONE

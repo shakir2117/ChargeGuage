@@ -28,6 +28,7 @@ class BatteryRepository(
 
     private var cachedExtras: PrivilegedExtras? = null
     private var cachedAtMillis: Long = 0L
+    private var smoothedCurrentMa: Double? = null
 
     suspend fun refreshOnce(): BatterySnapshot = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -52,12 +53,17 @@ class BatteryRepository(
                 cachedExtras = null
                 readFailed = false
             }
-            val snapshot = SnapshotMerger.merge(
+            val merged = SnapshotMerger.merge(
                 public = public,
                 extra = if (shizuku == ShizukuAvailability.READY) cachedExtras else null,
                 shizuku = shizuku,
                 fuelGaugeReadFailed = readFailed,
                 now = now,
+            )
+            smoothedCurrentMa = PowerMath.smoothCurrentMa(smoothedCurrentMa, merged.batteryCurrentMa)
+            val snapshot = merged.copy(
+                batteryCurrentMa = smoothedCurrentMa,
+                batteryPowerW = PowerMath.watts(merged.batteryVoltageMv, smoothedCurrentMa),
             )
             snapshotState.value = snapshot
             maybeRecordCapacity(snapshot)

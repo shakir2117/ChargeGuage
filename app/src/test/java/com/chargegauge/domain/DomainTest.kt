@@ -7,6 +7,15 @@ import org.junit.Test
 
 class DomainTest {
     @Test
+    fun smoothingFollowsCurrentWithoutMixingChargeAndDischarge() {
+        val first = PowerMath.smoothCurrentMa(null, 1000.0)
+        val second = PowerMath.smoothCurrentMa(first, 2000.0)
+        assertEquals(1350.0, second!!, 0.01)
+        val flipped = PowerMath.smoothCurrentMa(second, -500.0)
+        assertEquals(-500.0, flipped!!, 0.01)
+    }
+
+    @Test
     fun wattsAreVoltsTimesAmps() {
         assertEquals(18.0, PowerMath.watts(4500, 4000.0)!!, 0.001)
         assertNull(PowerMath.watts(null, 4000.0))
@@ -63,7 +72,8 @@ class DomainTest {
             10,
         )
         assertEquals(ReadingSource.FUEL_GAUGE, merged.batteryCurrentSource)
-        assertEquals(8.1, merged.batteryPowerW!!, 0.01)
+        assertEquals(ReadingSource.FUEL_GAUGE, merged.batteryVoltageSource)
+        assertEquals(7.92, merged.batteryPowerW!!, 0.01)
     }
 
     @Test

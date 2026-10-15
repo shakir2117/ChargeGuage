@@ -4,7 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.os.Build
+import android.content.pm.PermissionInfo
 import android.os.IBinder
 import android.util.Log
 import com.chargegauge.IPrivilegedBatteryService
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import rikka.shizuku.Shizuku
+import rikka.shizuku.ShizukuProvider
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -52,7 +53,8 @@ class ShizukuGateway(private val context: Context) {
     }
 
     fun openShizukuApp(): Boolean {
-        val launch = context.packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE) ?: return false
+        val packageName = shizukuPackageName() ?: return false
+        val launch = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
         launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             context.startActivity(launch)
@@ -100,21 +102,15 @@ class ShizukuGateway(private val context: Context) {
         }
     }
 
-    private fun isInstalled(): Boolean {
-        return try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                context.packageManager.getPackageInfo(
-                    SHIZUKU_PACKAGE,
-                    PackageManager.PackageInfoFlags.of(0),
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0)
-            }
-            true
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
-        }
+    private fun isInstalled(): Boolean = shizukuPermission() != null
+
+    private fun shizukuPackageName(): String? = shizukuPermission()?.packageName
+
+    private fun shizukuPermission(): PermissionInfo? {
+        return runCatching {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPermissionInfo(ShizukuProvider.PERMISSION, 0)
+        }.getOrNull()
     }
 
     private fun remote(): IPrivilegedBatteryService? {
@@ -160,7 +156,6 @@ class ShizukuGateway(private val context: Context) {
 
     private companion object {
         const val TAG = "ShizukuGateway"
-        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
         const val REQUEST_CODE = 100
         val bindLock = Any()
     }

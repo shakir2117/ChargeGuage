@@ -28,6 +28,16 @@ object PowerMath {
         return if (raw > 100_000) raw / 1000 else raw
     }
 
+    /**
+     * Blends the latest current into the previous one. A sign change starts over
+     * so charging and discharging are not averaged together.
+     */
+    fun smoothCurrentMa(previous: Double?, sample: Double?, alpha: Double = 0.35): Double? {
+        if (sample == null) return null
+        if (previous == null || previous * sample < 0.0) return sample
+        return previous + alpha * (sample - previous)
+    }
+
     fun watts(voltageMv: Int?, currentMa: Double?): Double? {
         if (voltageMv == null || currentMa == null || voltageMv <= 0) return null
         return (voltageMv / 1000.0) * (currentMa / 1000.0)
